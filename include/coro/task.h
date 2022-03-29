@@ -7,6 +7,8 @@
 
 #include <fmt/core.h>
 
+#include "handle.h"
+
 namespace coro
 {
     template<typename Ret = void>
@@ -14,7 +16,7 @@ namespace coro
 
     namespace detail
     {
-        struct promise_base
+        struct promise_base : handle
         {
             struct final_awaiter
             {
@@ -47,7 +49,7 @@ namespace coro
             }
 
             std::source_location const& get_frame_info() const { return m_frame_info; }
-            void dump_backtrace(size_t depth = 0) const
+            void dump_backtrace(size_t depth = 0) const override final
             {
                 auto frame_name = fmt::format("{} at {}:{}", m_frame_info.function_name(), m_frame_info.file_name(), m_frame_info.line());
                 fmt::print("[{}] {}\n", depth, frame_name);
@@ -85,6 +87,8 @@ namespace coro
                 return std::move(m_ret_value);
             }
 
+            void run() override final;
+
         private:
             Ret m_ret_value;
         };
@@ -104,6 +108,8 @@ namespace coro
                 if (m_exception_ptr)
                     std::rethrow_exception(m_exception_ptr);
             }
+
+            void run() override final;
         };
     }
 
@@ -216,6 +222,11 @@ namespace coro
         inline task<Ret> promise<Ret>::get_return_object() noexcept { return task<Ret>(handle_type::from_promise(*this)); }
 
         inline task<> promise<void>::get_return_object() noexcept { return task<>(handle_type::from_promise(*this)); }
+
+        template<typename Ret>
+        inline void promise<Ret>::run() { auto h = handle_type::from_promise(*this); if (h != nullptr && !h.done()) h.resume(); }
+
+        inline void promise<void>::run() { auto h = handle_type::from_promise(*this); if (h != nullptr && !h.done()) h.resume(); }
 
         struct CallStackAwaiter
         {
